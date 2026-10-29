@@ -195,7 +195,7 @@ try{const r=JSON.parse(localStorage.getItem('wallet_v2')||localStorage.getItem('
 let cT;const cloud=tg&&tg.CloudStorage;
 function cloudSave(){if(!cloud)return;clearTimeout(cT);cT=setTimeout(()=>{const s=JSON.stringify(S),n=Math.ceil(s.length/3500);cloud.setItem('w_n',String(n));for(let i=0;i<n;i++)cloud.setItem('w_'+i,s.slice(i*3500,(i+1)*3500))},900)}
 function cloudLoad(){if(!cloud)return;cloud.getItem('w_n',(e,v)=>{const n=+v;if(e||!n)return cloudSave();const k=[...Array(n).keys()].map(i=>'w_'+i);cloud.getItems(k,(e2,r)=>{if(e2)return;try{const d=JSON.parse(k.map(x=>r[x]).join(''));if(d.upd>S.upd){S=norm(d);localStorage.setItem('wallet_v2',JSON.stringify(S));applyBg();applyAcc();renderAll()}else if(d.upd<S.upd)cloudSave()}catch(x){}})})}
-const save=()=>{S.upd=Date.now();try{localStorage.setItem('wallet_v2',JSON.stringify(S))}catch(e){}cloudSave()};
+const save=()=>{S.upd=Date.now();if(typeof nsSchedule==='function')nsSchedule();try{localStorage.setItem('wallet_v2',JSON.stringify(S))}catch(e){}cloudSave()};
 const fmt=n=>Number(n).toLocaleString('ru-RU',{maximumFractionDigits:0});
 const money=n=>fmt(n)+'\u00A0'+S.set.cur;
 const MK=t=>{const d=new Date(t);return d.getFullYear()*12+d.getMonth()};
@@ -260,7 +260,7 @@ function an(){const m=mon(0),p=mon(1),now=new Date(),dim=new Date(now.getFullYea
  `<h2>Подушка безопасности</h2>`+(avgE>0?`<div class="big">${cu.toFixed(1).replace('.',',')} мес.</div><div class="sub">при среднем расходе ${money(avgE)} в месяц</div>`:'<div class="empty">Появится после первого полного месяца.</div>');
  h+=extraAn()+taxHtml();$('v-an').innerHTML=h;document.querySelectorAll('#v-an rect').forEach((r,i)=>r.style.animationDelay=i*70+'ms');sections($('v-an'));chartInit();anExtra()}
 
-function sett(){const s=S.set;$('v-set').innerHTML=`<h2>Цвет фона</h2>${swHtml()}<h2>Основной цвет</h2>${acHtml()}<h2>Категории</h2>${catsHtml()}<h2>Безопасность</h2>${secHtml()}<h2>Бюджет</h2>
+function sett(){const s=S.set;$('v-set').innerHTML=`<h2>Цвет фона</h2>${swHtml()}<h2>Основной цвет</h2>${acHtml()}<h2>Категории</h2>${catsHtml()}<h2>Уведомления в Telegram</h2>${ntHtml()}<h2>Безопасность</h2>${secHtml()}<h2>Бюджет</h2>
  <label>Плановый доход в месяц</label><input id="s-i" inputmode="decimal" value="${s.income||''}">
  <label>Обязательные платежи в месяц</label><input id="s-m" inputmode="decimal" value="${s.mand||''}">
  <label>Валюта</label><input id="s-c" value="${esc(s.cur)}" maxlength="4">
@@ -528,13 +528,44 @@ $('lp').onclick=async e=>{const k=e.target.dataset&&e.target.dataset.k;if(k==nul
  if(LK.mode==='check'){if(await sha(v)===S.set.pinh){$('lock').classList.remove('on');ldraw();afterUnlock()}else{hap('error');$('lt').textContent='Неверный PIN, попробуйте ещё раз';ldraw()}}
  else if(LK.mode==='new'){LK.first=v;LK.mode='confirm';$('lt').textContent='Повторите PIN';ldraw()}
  else{if(v===LK.first){S.set.pinh=await sha(v);save();$('lock').classList.remove('on');renderAll();hap('success')}else{LK.mode='new';$('lt').textContent='PIN не совпал. Введите новый PIN';ldraw()}}};
-document.addEventListener('visibilitychange',()=>{if(document.hidden){if(S.set.cover!==false)document.body.classList.add('cov');LKH=Date.now()}else{document.body.classList.remove('cov');if(S.set.pinh&&LKH&&Date.now()-LKH>15000){lockShow('check','Введите PIN');bioTry()}}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(S.set.cover!==false)document.body.classList.add('cov');LKH=Date.now();nsSync(false)}else{document.body.classList.remove('cov');nsInbox();if(S.set.pinh&&LKH&&Date.now()-LKH>15000){lockShow('check','Введите PIN');bioTry()}}});
 function secHtml(){const s=S.set;return `<div class="sub">${s.pinh?'PIN включён.':'PIN не установлен.'}</div><button class="btn g" id="k-pin">${s.pinh?'Сменить PIN':'Установить PIN'}</button>${s.pinh?'<button class="btn g" id="k-bio">'+(s.bio?'Отключить вход по биометрии':'Включить вход по биометрии')+'</button><button class="btn g d" id="k-off">Отключить PIN</button>':''}<label class="chk"><input type="checkbox" id="k-cov" ${s.cover!==false?'checked':''}> Скрывать суммы при сворачивании приложения</label>`}
 function secInit(){$('k-pin').onclick=()=>lockShow('new','Придумайте PIN из 4 цифр');
  if($('k-off'))$('k-off').onclick=()=>ask('Отключить PIN?',()=>{delete S.set.pinh;S.set.bio=false;save();renderAll()});
  if($('k-bio'))$('k-bio').onclick=()=>{if(S.set.bio){S.set.bio=false;save();renderAll();return}if(!BM)return note('Биометрия доступна только внутри Telegram.');BM.init(()=>{if(!BM.isBiometricAvailable)return note('Биометрия недоступна на этом устройстве.');BM.requestAccess({reason:'Вход в приложение'},ok=>{S.set.bio=!!ok;save();renderAll()})})};
  $('k-cov').onchange=e=>{S.set.cover=e.target.checked;save()}}
-function afterUnlock(){setTimeout(remind,1800)}
+let NSERR='',NSH='',NST=0;
+function NT(){return Object.assign({url:'',rem:true,remH:9,tax:true,env:true,week:true,wd:0,wh:19,eve:false,eh:21,rc:'USD',ra:0,rb:0,amt:true},S.set.nt||{})}
+function ntHtml(){const n=NT(),H=(id,v)=>`<select id="${id}">${[...Array(24).keys()].map(h=>`<option value="${h}"${h===v?' selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('')}</select>`,chk=(id,t,v)=>`<label class="chk"><input type="checkbox" id="${id}" ${v?'checked':''}> ${t}</label>`;
+ return `<div class="sub">Бот присылает уведомления через ваш Cloudflare Worker. Инструкция по настройке есть в сообщении от Claude.</div><label>Адрес Worker</label><input id="n-url" value="${esc(n.url)}" placeholder="https://имя.аккаунт.workers.dev">
+ ${chk('n-rem','Напоминать об ожидаемых и запланированных операциях и регулярных платежах',n.rem)}<label>Время напоминаний</label>${H('n-remH',n.remH)}
+ ${chk('n-tax','Напоминать о сроке уплаты налога (28-е число)',n.tax)}${chk('n-env','Предупреждать, когда конверт использован на 80% и 100%',n.env)}
+ ${chk('n-week','Недельный итог',n.week)}<div class="r2"><select id="n-wd">${['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'].map((d,i)=>`<option value="${i}"${i===n.wd?' selected':''}>${d}</option>`).join('')}</select>${H('n-wh',n.wh)}</div>
+ ${chk('n-eve','Вечернее напоминание, если сегодня не было записей',n.eve)}${H('n-eh',n.eh)}
+ <label>Оповещение о курсе: валюта, выше, ниже (пустое поле — выключено)</label><div class="r2"><input id="n-rc" value="${esc(n.rc)}" maxlength="4"><div class="r2"><input id="n-ra" inputmode="decimal" value="${n.ra||''}" placeholder="выше"><input id="n-rb" inputmode="decimal" value="${n.rb||''}" placeholder="ниже"></div></div>
+ ${chk('n-amt','Отправлять суммы. Если выключить, в Worker уйдут только названия и относительные значения, а в сообщениях будут проценты',n.amt)}
+ <button class="btn" id="n-save">Сохранить и синхронизировать</button><button class="btn g" id="n-test">Отправить тестовое сообщение</button><div class="sub" id="n-st" style="margin-top:8px">${n.last?'Последняя синхронизация: '+new Date(n.last).toLocaleString('ru-RU'):'Пока не синхронизировано.'}</div>`}
+function ntInit(){$('n-save').onclick=()=>{const g=id=>$(id).checked,v=id=>$(id).value,o=NT();Object.assign(o,{url:v('n-url').trim().replace(/\/+$/,''),rem:g('n-rem'),remH:+v('n-remH'),tax:g('n-tax'),env:g('n-env'),week:g('n-week'),wd:+v('n-wd'),wh:+v('n-wh'),eve:g('n-eve'),eh:+v('n-eh'),rc:v('n-rc').trim().toUpperCase(),ra:num(v('n-ra')),rb:num(v('n-rb')),amt:g('n-amt')});S.set.nt=o;save();nsSync(true)};
+ $('n-test').onclick=async()=>{const r=await nsCall('/test');$('n-st').textContent=r&&r.ok?'Тестовое сообщение отправлено. Проверьте чат с ботом.':'Не удалось отправить. '+NSERR}}
+function buildPlan(){const n=NT(),now=Date.now(),amt=n.amt,days={},dc={},D=x=>dstr(x);
+ S.tx.filter(x=>x.ts>now-15*864e5&&x.ts<=now+864e5&&x.type!=='tr').forEach(x=>{const d=D(x.ts),o=days[d]=days[d]||{i:0,e:0,n:0};o.n++;if(x.type==='inc')o.i+=x.amount;else{o.e+=x.amount;const c=dc[d]=dc[d]||{};c[x.cat]=(c[x.cat]||0)+x.amount}});
+ let mx=1;Object.values(days).forEach(o=>mx=Math.max(mx,o.i,o.e));const sc=amt?1:mx/1000,q=v=>Math.round(v/sc);
+ Object.values(days).forEach(o=>{o.i=q(o.i);o.e=q(o.e)});Object.values(dc).forEach(c=>{for(const k in c)c[k]=q(c[k])});
+ const items=[];S.pend.forEach(x=>items.push({d:D(x.due),t:x.t||'inc',n:x.note||x.cat,a:amt?x.amount:null}));
+ S.rec.forEach(r=>{let t=r.next,i=0;while(t<now+35*864e5&&i++<60){items.push({d:D(t),t:r.t,n:r.note||r.cat,a:amt?r.amount:null,r:1});t=recNext(r,t)}});
+ const by=byCat(mon(0).t),env=Object.entries(S.env).map(([c,l])=>({c,p:Math.round((by[c]||0)/l*100)})),nw=new Date(),dd=[];
+ if(S.set.tax.on)for(let i=0;i<3;i++)dd.push(D(new Date(nw.getFullYear(),nw.getMonth()+(nw.getDate()>28?1:0)+i,28,12).getTime()));
+ return {v:1,tz:-nw.getTimezoneOffset(),amt,cur:S.set.cur,bal:amt?r2(totalBal()):null,s:{rem:n.rem,remH:n.remH,tax:n.tax,env:n.env,week:n.week,wd:n.wd,wh:n.wh,eve:n.eve,eh:n.eh,rc:n.rc,ra:n.ra,rb:n.rb},items,days,dc,env,tax:S.set.tax.on?{d:dd}:null}}
+async function nsCall(path,body){const n=NT();NSERR='';if(!n.url){NSERR='Укажите адрес Worker.';return null}if(!(tg&&tg.initData)){NSERR='Откройте приложение внутри Telegram.';return null}
+ try{const r=await fetch(n.url+path,{method:'POST',headers:{'Content-Type':'application/json','X-Init-Data':tg.initData},body:JSON.stringify(body||{})}),j=await r.json();if(!r.ok||j.error){NSERR=j.error||('Ошибка '+r.status);return null}return j}catch(e){NSERR='Нет связи с Worker. Проверьте адрес.';return null}}
+async function nsSync(msg){const n=NT();if(!n.url)return;const plan=buildPlan(),h=JSON.stringify(plan);if(!msg&&h===NSH)return;const r=await nsCall('/sync',plan);
+ if(r){NSH=h;S.set.nt=Object.assign(NT(),{last:Date.now()});try{localStorage.setItem('wallet_v2',JSON.stringify(S))}catch(e){}}
+ if(msg){if($('n-st'))$('n-st').textContent=r?'Синхронизировано в '+new Date().toLocaleTimeString('ru-RU'):'Не удалось: '+NSERR;hap(r?'success':'error')}}
+function nsSchedule(){clearTimeout(NST);NST=setTimeout(()=>nsSync(false),20000)}
+async function nsInbox(){const n=NT();if(!n.url)return;const r=await nsCall('/inbox');if(!r||!r.items||!r.items.length)return;
+ r.items.forEach((x,i)=>{const inc=x.t==='inc',cs=CATS[inc?'inc':'exp'],c=cs.find(k=>x.n&&x.n.toLowerCase().includes(k.toLowerCase()))||(inc?'Прочее':'Другое');S.tx.push({id:Date.now()+i,type:inc?'inc':'exp',acc:S.acc[0].id,cat:c,amount:x.a,note:x.n||'',ts:x.ts||Date.now()})});
+ save();renderAll();note('Добавлено из бота: '+r.items.length+'. Категории подобраны по словам в заметке, при необходимости измените их.')}
+function afterUnlock(){setTimeout(remind,1800);nsInbox();nsSync(false)}
 function remind(){const d0=dstr(Date.now());if(S.set.rem===d0)return;const L=S.pend.filter(x=>dstr(x.due)<=d0);if(!L.length)return;S.set.rem=d0;save();note(L.slice(0,5).map(x=>((x.t||'inc')==='inc'?'Ожидается: ':'К оплате: ')+(x.note||x.cat)+' — '+money(x.amount)).join('\n'))}
 function count(e){if(S.set.hide)return;const t=money(+e.dataset.n);e.innerHTML=[...t].map(c=>/\d/.test(c)?`<span class="dg"><i data-d="${c}">${[0,1,2,3,4,5,6,7,8,9].join('<br>')}</i></span>`:`<span>${c}</span>`).join('');
  requestAnimationFrame(()=>requestAnimationFrame(()=>e.querySelectorAll('.dg i').forEach((x,i)=>{x.style.transitionDelay=i*45+'ms';x.style.transform=`translateY(-${x.dataset.d}em)`})))}
@@ -566,7 +597,7 @@ function swInit(){const bs=document.querySelectorAll('#sw-bg button'),as=documen
  bs.forEach(b=>b.onclick=e=>wave(e,()=>{S.set.bg=b.dataset.bg;save();applyBg();bs.forEach(x=>x.classList.toggle('on',x===b))}));
  as.forEach(b=>b.onclick=e=>wave(e,()=>{S.set.acc=b.dataset.ac;save();applyAcc();as.forEach(x=>x.classList.toggle('on',x===b))}));
  $('s-bg').oninput=e=>{S.set.bg=e.target.value;save();applyBg();bs.forEach(x=>x.classList.remove('on'))};
- catsInit();secInit()}
+ catsInit();secInit();ntInit()}
 applyBg();applyAcc();rtPrep();rtFetch();try{tg.disableVerticalSwipes()}catch(e){}runRec();renderAll();cloudLoad();try{BM.init()}catch(e){}if(S.set.pinh){lockShow('check','Введите PIN');bioTry()}else afterUnlock();
 </script>
 </body>
